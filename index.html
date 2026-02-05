@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HeartHop 💘</title>
+
+<style>
+body {
+  margin: 0;
+  background: #fff0f5;
+  font-family: Arial, sans-serif;
+  text-align: center;
+  user-select: none;
+}
+
+h1 { color: #ff4d6d; margin: 10px 0 0; }
+p { color: #666; margin: 5px 0 10px; }
+
+canvas {
+  display: block;
+  margin: 0 auto;
+  background: white;
+  border: 2px solid #ffb3c6;
+}
+</style>
+</head>
+
+<body>
+
+<h1>HeartHop 💖</h1>
+<p>SPACE / TAP to jump • ❤️ score • 💛 streak • 💔 ends</p>
+
+<canvas id="game" width="800" height="300"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+/* ================= AUDIO ================= */
+const audioCtx = new AudioContext();
+function beep(freq, dur = 0.1) {
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.frequency.value = freq;
+  o.connect(g);
+  g.connect(audioCtx.destination);
+  o.start();
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+  o.stop(audioCtx.currentTime + dur);
+}
+
+/* ================= STATE ================= */
+let started = false;
+let gameOver = false;
+let speed = 6;
+let frame = 0;
+let timeStart = 0;
+
+let hearts = 0;
+let combo = 0;
+let goldStreak = 0;
+let dayPhase = 0;
+
+/* ================= EMOTION ================= */
+let emotion = "😌";
+let emotionTimer = 0;
+
+/* ================= PLAYER ================= */
+const runner = {
+  x: 60,
+  y: 215,
+  baseY: 215,
+  vy: 0,
+  gravity: 1.1,
+  jump: -18,
+  onGround: true
+};
+
+let coyote = 0;
+let buffer = 0;
+
+/* ================= ITEMS ================= */
+const lanes = [150, 185, 225];
+const items = [];
+
+/* ================= PARTICLES ================= */
+const particles = [];
+
+/* ================= PLAYER EMOJI ================= */
+function getPlayerEmoji() {
+  if (combo >= 4) return "😎";
+  if (combo === 3) return "🤩";
+  if (combo === 2) return "😍";
+  if (combo === 1) return "😄";
+  return "🙂";
+}
+
+/* ================= SPAWN ================= */
+function spawnItem() {
+  const elapsed = (Date.now() - timeStart) / 1000;
+  let type = "bad";
+  const roll = Math.random();
+
+  if ((elapsed > 10 || hearts >= 10) && roll > 0.9) type = "gold";
+  else if (roll > 0.5) type = "good";
+
+  const lane =
+    type !== "bad"
+      ? lanes[Math.floor(Math.random() * 2)]
+      : lanes[Math.floor(Math.random() * lanes.length)];
+
+  items.push({ x: canvas.width, y: lane, type, offset: 0, collected: false });
+  speed = 6 + hearts * 0.15 + elapsed / 10;
+}
+
+setInterval(() => {
+  if (started && !gameOver) spawnItem();
+}, 1300);
+
+/* ================= INPUT ================= */
+function jump() {
+  if (!started) {
+    started = true;
+    timeStart = Date.now();
+    audioCtx.resume();
+  }
+  buffer = 6;
+  emotion = "😌";
+  emotionTimer = 10;
+
+  for (let i = 0; i < 6; i++) {
+    particles.push({
+      x: runner.x + 12,
+      y: runner.y + 22,
+      vx: Math.random() * -2,
+      vy: Math.random() * -2 - 1,
+      life: 30,
+      char: Math.random() > 0.5 ? "✨" : "🌸"
+    });
+  }
+
+  beep(500, 0.08);
+}
+
+document.addEventListener("keydown", e => {
+  if (e.code === "Space") {
+    if (gameOver) location.reload();
+    else jump();
+  }
+});
+
+canvas.addEventListener("click", jump);
+
+/* ================= UPDATE ================= */
+function update() {
+  if (!started || gameOver) return;
+
+  runner.vy += runner.gravity;
+  runner.y += runner.vy;
+
+  if (runner.y >= runner.baseY) {
+    runner.y = runner.baseY;
+    runner.vy = 0;
+    runner.onGround = true;
+    coyote = 6;
+  } else {
+    runner.onGround = false;
+    coyote--;
+  }
+
+  if (buffer > 0 && coyote > 0) {
+    runner.vy = runner.jump;
+    buffer = 0;
+    coyote = 0;
+  }
+  buffer--;
+
+  items.forEach(i => {
+    i.x -= speed;
+    if (i.type === "bad") {
+    // aggressive side-to-side shake
+    i.offset = Math.sin(frame * 0.4) * 6;
+  } else if (i.type === "gold") {
+    // confident bounce
+    i.offset = Math.sin(frame * 0.15) * 4;
+  } else {
+    // calm float
+    i.offset = Math.sin(frame * 0.08) * 2;
+  }
+
+  });
+
+  items.forEach(i => {
+    const hit =
+      runner.x < i.x + 28 &&
+      runner.x + 32 > i.x &&
+      runner.y < i.y + 28 &&
+      runner.y + 32 > i.y;
+
+    if (hit) {
+      if (!runner.onGround) {
+        if (i.type === "good") {
+          hearts += 1;
+          emotion = "😄";
+          emotionTimer = 15;
+          beep(700, 0.1);
+          i.collected = true;
+          i.x = -100;
+        }
+
+        if (i.type === "gold") {
+          hearts += 2;
+          goldStreak++;
+
+          if (goldStreak >= 2) {
+            combo++;
+            goldStreak = 0;
+            emotion = "😎";
+            emotionTimer = 25;
+          } else {
+            emotion = "😄";
+            emotionTimer = 15;
+          }
+
+          beep(900, 0.12);
+          i.collected = true;
+          i.x = -100;
+        }
+      }
+
+      if (i.type === "bad") {
+        emotion = "😱";
+        emotionTimer = 40;
+        beep(200, 0.3);
+        gameOver = true;
+        showEnd();
+      }
+    }
+  });
+
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.1;
+    p.life--;
+  });
+  while (particles.length && particles[0].life <= 0) particles.shift();
+
+  if (emotionTimer > 0) emotionTimer--;
+  else emotion = "😌";
+
+  while (items.length && items[0].x < -50) {
+    const missed = items.shift();
+    if (missed.type === "gold" && !missed.collected) {
+      combo = 0;
+      goldStreak = 0;
+      emotion = "😶";
+      emotionTimer = 20;
+    }
+  }
+
+  frame++;
+  dayPhase += 0.001;
+}
+
+/* ================= DRAW ================= */
+function draw() {
+  ctx.save();
+
+  const sky = Math.sin(dayPhase) * 40;
+  ctx.fillStyle = `rgb(${255 - sky},${240 - sky},${245})`;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "#ffd6e0";
+  ctx.fillRect(0, 260, canvas.width, 40);
+
+  ctx.font = "18px Arial";
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / 30;
+    ctx.fillText(p.char, p.x, p.y);
+  });
+  ctx.globalAlpha = 1;
+
+  ctx.font = "32px Arial";
+  ctx.fillText(getPlayerEmoji(), runner.x + 4, runner.y + 26);
+
+  ctx.font = "18px Arial";
+  ctx.fillText(emotion, runner.x + 30, runner.y - 5);
+
+  ctx.font = "28px Arial";
+  items.forEach(i => {
+    const icon = i.type === "good" ? "❤️" : i.type === "gold" ? "💛" : "💔";
+    if (i.type === "bad") {
+    ctx.fillText(icon, i.x + i.offset, i.y);
+  } else {
+    ctx.fillText(icon, i.x, i.y + i.offset);
+  }
+
+  });
+
+  ctx.fillStyle = "#333";
+  ctx.font = "16px Arial";
+  if (started) {
+    const t = ((Date.now() - timeStart) / 1000).toFixed(1);
+    ctx.fillText(`❤️ ${hearts}`, 20, 25);
+    ctx.fillText(`🔥 ${combo}`, 20, 45);
+    ctx.fillText(`⏱ ${t}s`, 700, 25);
+  }
+
+  ctx.restore();
+}
+
+/* ================= END ================= */
+function showEnd() {
+  const t = ((Date.now() - timeStart) / 1000).toFixed(1);
+  const d = document.createElement("div");
+  d.style = `
+    position:fixed;inset:0;
+    background:rgba(255,240,245,.97);
+    display:flex;flex-direction:column;
+    justify-content:center;align-items:center;
+    color:#ff4d6d;text-align:center;
+    padding:20px;
+  `;
+  d.innerHTML = `
+    <h2>💘 Game Over 💘</h2>
+    <p>You caught <b>${hearts}</b> hearts</p>
+    <p>You ran for <b>${t}</b> seconds</p>
+    <p>You jumped for the right hearts…<br>and stayed grounded for the wrong ones 😌</p>
+    <p>Happy Valentine’s Day ❤️</p>
+    <p style="margin-top:15px;">SPACE or TAP to play again</p>
+  `;
+  document.body.appendChild(d);
+}
+
+/* ================= LOOP ================= */
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+
+</body>
+</html>
