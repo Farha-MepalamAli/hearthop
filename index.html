@@ -109,7 +109,20 @@ function spawnItem() {
       ? lanes[Math.floor(Math.random() * 2)]
       : lanes[Math.floor(Math.random() * lanes.length)];
 
-  items.push({ x: canvas.width, y: lane, type, offset: 0, collected: false });
+  const itemSpeed =
+    type === "bad" ? 1 :        // broken hearts stay scary-fast
+    type === "gold" ? 0.75 :    // gold hearts are readable but exciting
+    0.65;                       // normal hearts are calm & clear
+
+  items.push({
+    x: canvas.width,
+    y: lane,
+    type,
+    offset: 0,
+    collected: false,
+    speedFactor: itemSpeed
+  });
+
   speed = 6 + hearts * 0.15 + elapsed / 10;
 }
 
@@ -176,7 +189,7 @@ function update() {
   buffer--;
 
   items.forEach(i => {
-    i.x -= speed;
+    i.x -= speed * i.speedFactor;
     if (i.type === "bad") {
     // aggressive side-to-side shake
     i.offset = Math.sin(frame * 0.4) * 6;
